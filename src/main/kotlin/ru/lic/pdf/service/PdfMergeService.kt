@@ -1,11 +1,16 @@
 package ru.lic.pdf.service
 
 import org.apache.pdfbox.pdmodel.PDDocument
+import org.apache.pdfbox.pdmodel.PDPage
+import org.apache.pdfbox.pdmodel.PDPageContentStream
+import org.apache.pdfbox.pdmodel.common.PDRectangle
+import org.apache.pdfbox.pdmodel.font.PDType1Font
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import ru.lic.pdf.exception.PdfFileNotFoundException
 import ru.lic.pdf.exception.PdfGenerationException
 import ru.lic.pdf.model.dto.GeneratePdfRequestDto
+import ru.lic.pdf.model.dto.LabelDto
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -14,6 +19,13 @@ import java.nio.file.Paths
 class PdfMergeService(
     @Value("\${pdf.output-file}") private val outputFile: String
 )  {
+
+    companion object {
+        private const val POINTS_PER_MM = 72f / 25.4f
+        private const val LABEL_PAGE_WIDTH_MM = 75f
+        private const val LABEL_PAGE_HEIGHT_MM = 120f
+        private const val LABEL_PAGE_ROTATION_DEGREES = 90
+    }
 
     fun generate(request: GeneratePdfRequestDto) {
         try {
@@ -31,30 +43,26 @@ class PdfMergeService(
             throw PdfFileNotFoundException(basePath.toString())
         }
 
-        Files.createDirectories(outputPath.parent)
+        outputPath.parent?.let { Files.createDirectories(it) }
 
         // открываем базовый PDF
         val baseDoc = PDDocument.load(basePath.toFile())
-        // открываем все insert PDF и храним их в списке
-        val insertDocs = request.files.map { file ->
-            val path = Paths.get(file)
-            if (!Files.exists(path)) throw PdfFileNotFoundException(path.toString())
-            val doc = PDDocument.load(path.toFile())
-            if (doc.numberOfPages == 0) throw PdfGenerationException("Empty PDF: $path")
-            doc
-        }
 
         // создаем итоговый документ
         val resultDoc = PDDocument()
 
         try {
-            baseDoc.pages.forEachIndexed { index, basePage ->
-                // копируем страницу из базового PDF
-                resultDoc.importPage(basePage)
+            val basePages = baseDoc.pages.toList()
+            val labels = request.labels
+            val maxSize = maxOf(basePages.size, labels.size)
 
-                // вставляем страницу из insert PDF, если есть
-                if (index < insertDocs.size) {
-                    resultDoc.importPage(insertDocs[index].getPage(0))
+            repeat(maxSize) { index ->
+                if (index < basePages.size) {
+                    resultDoc.importPage(basePages[index])
+                }
+
+                if (index < labels.size) {
+                    addLabelPage(resultDoc, labels[index])
                 }
             }
 
@@ -64,7 +72,31 @@ class PdfMergeService(
             // закрываем все документы после сохранения
             resultDoc.close()
             baseDoc.close()
-            insertDocs.forEach { it.close() }
+        }
+    }
+
+    private fun addLabelPage(document: PDDocument, label: LabelDto) {
+        val pageWidth = LABEL_PAGE_WIDTH_MM * POINTS_PER_MM
+        val pageHeight = LABEL_PAGE_HEIGHT_MM * POINTS_PER_MM
+        val page = PDPage(PDRectangle(pageWidth, pageHeight))
+        page.rotation = LABEL_PAGE_ROTATION_DEGREES
+        document.addPage(page)
+
+        PDPageContentStream(document, page).use { contentStream ->
+            contentStream.beginText()
+            contentStream.setFont(PDType1Font.HELVETICA, 10f)
+            contentStream.setLeading(16f)
+            contentStream.newLineAtOffset(16f, pageHeight - 30f)
+            contentStream.showText("Nomenclature: ${label.nomenclature}")
+            contentStream.newLine()
+            contentStream.showText("Quantity: ${label.quantity}")
+            contentStream.newLine()
+            contentStream.showText("Unit of measure: ${label.unitOfMeasure}")
+            contentStream.newLine()
+            contentStream.showText("Order number: ${label.orderNumber}")
+            contentStream.newLine()
+            contentStream.showText("Shipment number: ${label.shipmentNumber}")
+            contentStream.endText()
         }
     }
 
