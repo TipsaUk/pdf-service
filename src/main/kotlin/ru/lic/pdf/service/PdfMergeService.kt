@@ -4,7 +4,8 @@ import org.apache.pdfbox.pdmodel.PDDocument
 import org.apache.pdfbox.pdmodel.PDPage
 import org.apache.pdfbox.pdmodel.PDPageContentStream
 import org.apache.pdfbox.pdmodel.common.PDRectangle
-import org.apache.pdfbox.pdmodel.font.PDType1Font
+import org.apache.pdfbox.pdmodel.font.PDFont
+import org.apache.pdfbox.pdmodel.font.PDType0Font
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import ru.lic.pdf.exception.PdfFileNotFoundException
@@ -13,11 +14,13 @@ import ru.lic.pdf.model.dto.GeneratePdfRequestDto
 import ru.lic.pdf.model.dto.LabelDto
 import java.io.IOException
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.Paths
 
 @Service
 class PdfMergeService(
-    @Value("\${pdf.output-file}") private val outputFile: String
+    @Value("\${pdf.output-file}") private val outputFile: String,
+    @Value("\${pdf.font-file:}") private val fontFile: String
 )  {
 
     companion object {
@@ -52,6 +55,7 @@ class PdfMergeService(
         val resultDoc = PDDocument()
 
         try {
+            val labelFont = loadLabelFont(resultDoc)
             val basePages = baseDoc.pages.toList()
             val labels = request.labels
             val maxSize = maxOf(basePages.size, labels.size)
@@ -62,7 +66,7 @@ class PdfMergeService(
                 }
 
                 if (index < labels.size) {
-                    addLabelPage(resultDoc, labels[index])
+                    addLabelPage(resultDoc, labels[index], labelFont)
                 }
             }
 
@@ -75,7 +79,7 @@ class PdfMergeService(
         }
     }
 
-    private fun addLabelPage(document: PDDocument, label: LabelDto) {
+    private fun addLabelPage(document: PDDocument, label: LabelDto, font: PDFont) {
         val pageWidth = LABEL_PAGE_WIDTH_MM * POINTS_PER_MM
         val pageHeight = LABEL_PAGE_HEIGHT_MM * POINTS_PER_MM
         val page = PDPage(PDRectangle(pageWidth, pageHeight))
@@ -84,7 +88,7 @@ class PdfMergeService(
 
         PDPageContentStream(document, page).use { contentStream ->
             contentStream.beginText()
-            contentStream.setFont(PDType1Font.HELVETICA, 10f)
+            contentStream.setFont(font, 10f)
             contentStream.setLeading(16f)
             contentStream.newLineAtOffset(16f, pageHeight - 30f)
             contentStream.showText("Nomenclature: ${label.nomenclature}")
@@ -98,6 +102,42 @@ class PdfMergeService(
             contentStream.showText("Shipment number: ${label.shipmentNumber}")
             contentStream.endText()
         }
+    }
+
+    private fun loadLabelFont(document: PDDocument): PDFont {
+        val candidatePaths = buildFontCandidates()
+        val existingPath = candidatePaths.firstOrNull { path ->
+            Files.exists(path) && Files.isRegularFile(path)
+        } ?: throw PdfGenerationException(
+            "Unable to find a TrueType font for PDF labels. Set 'pdf.font-file' in configuration. Checked: ${candidatePaths.joinToString()}"
+        )
+
+        Files.newInputStream(existingPath).use { fontStream ->
+            return PDType0Font.load(document, fontStream)
+        }
+    }
+
+    private fun buildFontCandidates(): List<Path> {
+        val configured = fontFile.trim()
+        val candidates = mutableListOf<Path>()
+        if (configured.isNotBlank()) {
+            candidates += Paths.get(configured)
+        }
+
+        val windowsDir = System.getenv("WINDIR")
+        if (!windowsDir.isNullOrBlank()) {
+            candidates += Paths.get(windowsDir, "Fonts", "arial.ttf")
+            candidates += Paths.get(windowsDir, "Fonts", "times.ttf")
+        }
+
+        candidates += Paths.get("C:/Windows/Fonts/arial.ttf")
+        candidates += Paths.get("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+        candidates += Paths.get("/usr/share/fonts/dejavu/DejaVuSans.ttf")
+        candidates += Paths.get("/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf")
+        candidates += Paths.get("/Library/Fonts/Arial Unicode.ttf")
+        candidates += Paths.get("/System/Library/Fonts/Supplemental/Arial Unicode.ttf")
+
+        return candidates.distinct()
     }
 
 }
