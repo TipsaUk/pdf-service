@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <springProperty
+            scope="context"
+            name="LOG_PATH"
+            source="pdf.log-dir"/>
+
+    <!-- Консольный аппендер -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Файл с ротацией по дням -->
+    <appender name="ROLLING" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/pdf-service.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- Каждый день создаётся новый файл -->
+            <fileNamePattern>${LOG_PATH}/pdf-service-%d{yyyy-MM-dd}.log</fileNamePattern>
+            <!-- Храним только последние 7 файлов -->
+            <maxHistory>7</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Root logger: INFO для всех пакетов, вывод в файл и консоль -->
+    <root level="INFO">
+        <appender-ref ref="ROLLING"/>
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+    <!-- Логи для пакета PDF на DEBUG -->
+    <logger name="ru.lic.pdf" level="DEBUG"/>
+
+</configuration>
