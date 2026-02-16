@@ -6,4 +6,5 @@
         org.springframework.boot.web: DEBUG
  pdf:
     output-file: "D:/work/pdf/newfile.pdf"
+    font-file: "C:/Windows/Fonts/arial.ttf"
     log-dir: "D:/work/pdf/pdf-service/logs"
