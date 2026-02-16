@@ -1,0 +1,9 @@
+ logging:
+    level:
+        root: INFO
+        ru.lic.pdf: DEBUG
+        org.springframework.web: DEBUG
+        org.springframework.boot.web: DEBUG
+ pdf:
+    output-file: "D:/work/pdf/newfile.pdf"
+    log-dir: "D:/work/pdf/pdf-service/logs"
