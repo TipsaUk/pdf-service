@@ -23,13 +23,6 @@ class PdfMergeService(
     @Value("\${pdf.font-file:}") private val fontFile: String
 )  {
 
-    companion object {
-        private const val POINTS_PER_MM = 72f / 25.4f
-        private const val LABEL_PAGE_WIDTH_MM = 75f
-        private const val LABEL_PAGE_HEIGHT_MM = 120f
-        private const val LABEL_PAGE_ROTATION_DEGREES = 90
-    }
-
     fun generate(request: GeneratePdfRequestDto) {
         try {
             generateInternal(request)
@@ -82,26 +75,90 @@ class PdfMergeService(
     private fun addLabelPage(document: PDDocument, label: LabelDto, font: PDFont) {
         val pageWidth = LABEL_PAGE_WIDTH_MM * POINTS_PER_MM
         val pageHeight = LABEL_PAGE_HEIGHT_MM * POINTS_PER_MM
+        val frameInset = 2f * POINTS_PER_MM
+        val contentInset = frameInset + (2f * POINTS_PER_MM)
+        val fontSize = 14f
+        val lineHeight = 14f
+
         val page = PDPage(PDRectangle(pageWidth, pageHeight))
         page.rotation = LABEL_PAGE_ROTATION_DEGREES
         document.addPage(page)
 
         PDPageContentStream(document, page).use { contentStream ->
-            contentStream.beginText()
-            contentStream.setFont(font, 10f)
-            contentStream.setLeading(16f)
-            contentStream.newLineAtOffset(16f, pageHeight - 30f)
-            contentStream.showText("Nomenclature: ${label.nomenclature}")
-            contentStream.newLine()
-            contentStream.showText("Quantity: ${label.quantity}")
-            contentStream.newLine()
-            contentStream.showText("Unit of measure: ${label.unitOfMeasure}")
-            contentStream.newLine()
-            contentStream.showText("Order number: ${label.orderNumber}")
-            contentStream.newLine()
-            contentStream.showText("Shipment number: ${label.shipmentNumber}")
-            contentStream.endText()
+            contentStream.setLineWidth(1f)
+            contentStream.addRect(frameInset, frameInset, pageWidth - frameInset * 2, pageHeight - frameInset * 2)
+            contentStream.stroke()
+
+            val topStaticTextY = pageHeight - contentInset - fontSize
+            drawCenteredLine(contentStream, font, fontSize, pageWidth, topStaticTextY, "Наш сайт diasgroup.ru")
+
+            val shipmentY = contentInset
+            val orderY = shipmentY + lineHeight
+            drawCenteredLine(contentStream, font, fontSize, pageWidth, orderY, label.orderNumber)
+            drawCenteredLine(contentStream, font, fontSize, pageWidth, shipmentY, label.shipmentNumber)
+
+            val quantityAndUom = "${label.quantity} ${label.unitOfMeasure}".trim()
+            val quantityAndUomY = orderY + lineHeight * 1.5f
+            drawCenteredLine(contentStream, font, fontSize, pageWidth, quantityAndUomY, quantityAndUom)
+
+            val maxTextWidth = pageWidth - contentInset * 2
+            val nomenclatureStartY = topStaticTextY - lineHeight * 1.5f
+            val availableHeight = nomenclatureStartY - quantityAndUomY - lineHeight
+            val maxNomenclatureLines = (availableHeight / lineHeight).toInt().coerceAtLeast(1)
+            val nomenclatureLines = wrapTextByWords(label.nomenclature, font, fontSize, maxTextWidth)
+                .take(maxNomenclatureLines)
+
+            nomenclatureLines.forEachIndexed { index, line ->
+                val y = nomenclatureStartY - (index * lineHeight)
+                drawCenteredLine(contentStream, font, fontSize, pageWidth, y, line)
+            }
         }
+    }
+
+    private fun drawCenteredLine(
+        contentStream: PDPageContentStream,
+        font: PDFont,
+        fontSize: Float,
+        pageWidth: Float,
+        y: Float,
+        text: String
+    ) {
+        val safeText = text.trim()
+        if (safeText.isBlank()) return
+
+        val textWidth = (font.getStringWidth(safeText) / 1000f) * fontSize
+        val x = ((pageWidth - textWidth) / 2f).coerceAtLeast(0f)
+
+        contentStream.beginText()
+        contentStream.setFont(font, fontSize)
+        contentStream.newLineAtOffset(x, y)
+        contentStream.showText(safeText)
+        contentStream.endText()
+    }
+
+    private fun wrapTextByWords(text: String, font: PDFont, fontSize: Float, maxWidth: Float): List<String> {
+        val words = text.trim().split("\\s+".toRegex()).filter { it.isNotBlank() }
+        if (words.isEmpty()) return emptyList()
+
+        val lines = mutableListOf<String>()
+        var currentLine = ""
+
+        for (word in words) {
+            val candidate = if (currentLine.isBlank()) word else "$currentLine $word"
+            val candidateWidth = (font.getStringWidth(candidate) / 1000f) * fontSize
+            if (candidateWidth <= maxWidth || currentLine.isBlank()) {
+                currentLine = candidate
+            } else {
+                lines.add(currentLine)
+                currentLine = word
+            }
+        }
+
+        if (currentLine.isNotBlank()) {
+            lines.add(currentLine)
+        }
+
+        return lines
     }
 
     private fun loadLabelFont(document: PDDocument): PDFont {
@@ -121,23 +178,30 @@ class PdfMergeService(
         val configured = fontFile.trim()
         val candidates = mutableListOf<Path>()
         if (configured.isNotBlank()) {
-            candidates += Paths.get(configured)
+            candidates.add(Paths.get(configured))
         }
 
         val windowsDir = System.getenv("WINDIR")
         if (!windowsDir.isNullOrBlank()) {
-            candidates += Paths.get(windowsDir, "Fonts", "arial.ttf")
-            candidates += Paths.get(windowsDir, "Fonts", "times.ttf")
+            candidates.add(Paths.get(windowsDir, "Fonts", "arial.ttf"))
+            candidates.add(Paths.get(windowsDir, "Fonts", "times.ttf"))
         }
 
-        candidates += Paths.get("C:/Windows/Fonts/arial.ttf")
-        candidates += Paths.get("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
-        candidates += Paths.get("/usr/share/fonts/dejavu/DejaVuSans.ttf")
-        candidates += Paths.get("/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf")
-        candidates += Paths.get("/Library/Fonts/Arial Unicode.ttf")
-        candidates += Paths.get("/System/Library/Fonts/Supplemental/Arial Unicode.ttf")
+        candidates.add(Paths.get("C:/Windows/Fonts/arial.ttf"))
+        candidates.add(Paths.get("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"))
+        candidates.add(Paths.get("/usr/share/fonts/dejavu/DejaVuSans.ttf"))
+        candidates.add(Paths.get("/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf"))
+        candidates.add(Paths.get("/Library/Fonts/Arial Unicode.ttf"))
+        candidates.add(Paths.get("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"))
 
         return candidates.distinct()
+    }
+
+    companion object {
+        private const val POINTS_PER_MM = 72f / 25.4f
+        private const val LABEL_PAGE_WIDTH_MM = 120f
+        private const val LABEL_PAGE_HEIGHT_MM = 75f
+        private const val LABEL_PAGE_ROTATION_DEGREES = 90
     }
 
 }
