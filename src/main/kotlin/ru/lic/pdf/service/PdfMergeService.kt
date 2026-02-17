@@ -23,13 +23,6 @@ class PdfMergeService(
     @Value("\${pdf.font-file:}") private val fontFile: String
 )  {
 
-    companion object {
-        private const val POINTS_PER_MM = 72f / 25.4f
-        private const val LABEL_PAGE_WIDTH_MM = 75f
-        private const val LABEL_PAGE_HEIGHT_MM = 120f
-        private const val LABEL_PAGE_ROTATION_DEGREES = 90
-    }
-
     fun generate(request: GeneratePdfRequestDto) {
         try {
             generateInternal(request)
@@ -121,23 +114,30 @@ class PdfMergeService(
         val configured = fontFile.trim()
         val candidates = mutableListOf<Path>()
         if (configured.isNotBlank()) {
-            candidates += Paths.get(configured)
+            candidates.add(Paths.get(configured))
         }
 
         val windowsDir = System.getenv("WINDIR")
         if (!windowsDir.isNullOrBlank()) {
-            candidates += Paths.get(windowsDir, "Fonts", "arial.ttf")
-            candidates += Paths.get(windowsDir, "Fonts", "times.ttf")
+            candidates.add(Paths.get(windowsDir, "Fonts", "arial.ttf"))
+            candidates.add(Paths.get(windowsDir, "Fonts", "times.ttf"))
         }
 
-        candidates += Paths.get("C:/Windows/Fonts/arial.ttf")
-        candidates += Paths.get("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
-        candidates += Paths.get("/usr/share/fonts/dejavu/DejaVuSans.ttf")
-        candidates += Paths.get("/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf")
-        candidates += Paths.get("/Library/Fonts/Arial Unicode.ttf")
-        candidates += Paths.get("/System/Library/Fonts/Supplemental/Arial Unicode.ttf")
+        candidates.add(Paths.get("C:/Windows/Fonts/arial.ttf"))
+        candidates.add(Paths.get("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"))
+        candidates.add(Paths.get("/usr/share/fonts/dejavu/DejaVuSans.ttf"))
+        candidates.add(Paths.get("/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf"))
+        candidates.add(Paths.get("/Library/Fonts/Arial Unicode.ttf"))
+        candidates.add(Paths.get("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"))
 
         return candidates.distinct()
+    }
+
+    companion object {
+        private const val POINTS_PER_MM = 72f / 25.4f
+        private const val LABEL_PAGE_WIDTH_MM = 120f
+        private const val LABEL_PAGE_HEIGHT_MM = 75f
+        private const val LABEL_PAGE_ROTATION_DEGREES = 90
     }
 
 }
