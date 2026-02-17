@@ -77,7 +77,7 @@ class PdfMergeService(
         val pageHeight = LABEL_PAGE_HEIGHT_MM * POINTS_PER_MM
         val frameInset = 2f * POINTS_PER_MM
         val contentInset = frameInset + (2f * POINTS_PER_MM)
-        val fontSize = 10f
+        val fontSize = 14f
         val lineHeight = 14f
 
         val page = PDPage(PDRectangle(pageWidth, pageHeight))
